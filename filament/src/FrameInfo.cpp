@@ -27,8 +27,6 @@
 #include <utils/debug.h>
 #include <utils/FixedCapacityVector.h>
 #include <utils/JobSystem.h>
-#include <utils/Logger.h>
-#include <utils/ostream.h>
 
 #include <algorithm>
 #include <atomic>
@@ -235,10 +233,16 @@ void FrameInfoManager::denoiseFrameTime(FrameHistoryQueue& history, Config const
      }
 }
 
-FixedCapacityVector<Renderer::FrameInfo> FrameInfoManager::getFrameInfoHistory(
-        size_t historySize) const {
+void FrameInfoManager::updateUserHistory(FSwapChain* swapChain, DriverApi& driver) {
+
+    if (!swapChain) {
+        swapChain = mLastSeenSwapChain;
+    } else {
+        mLastSeenSwapChain = swapChain;
+    }
+
     auto result = FixedCapacityVector<Renderer::FrameInfo>::with_capacity(MAX_FRAMETIME_HISTORY);
-    auto const& history = mFrameTimeHistory;
+    auto& history = mFrameTimeHistory;
     size_t i = 0;
     size_t const c = history.size();
     for (; i < c; ++i) {
@@ -249,8 +253,25 @@ FixedCapacityVector<Renderer::FrameInfo> FrameInfoManager::getFrameInfoHistory(
             break;
         }
     }
+    size_t historySize = MAX_FRAMETIME_HISTORY;
     for (; i < c && historySize; ++i, --historySize) {
-        auto const& entry = history[i];
+        auto& entry = history[i];
+
+        // retrieve the displayPresentTime only we don't already have it
+        if (entry.displayPresent < 0) {
+            if (swapChain && driver.isCompositorTimingSupported()) {
+                FrameTimestamps frameTimestamps{};
+                // queryFrameTimestamps could fail if this frameid is no longer available
+                bool const success = driver.queryFrameTimestamps(swapChain->getHwHandle(),
+                        entry.frameId, &frameTimestamps);
+                if (success) {
+                    assert_invariant(entry.displayPresent < 0 ||
+                            entry.displayPresent == frameTimestamps.displayPresentTime);
+                    entry.displayPresent = frameTimestamps.displayPresentTime;
+                }
+            }
+        }
+
         using namespace std::chrono;
         // can't throw by construction
         result.push_back({
@@ -262,8 +283,18 @@ FixedCapacityVector<Renderer::FrameInfo> FrameInfoManager::getFrameInfoHistory(
                 duration_cast<nanoseconds>(entry.backendBeginFrame.time_since_epoch()).count(),
                 duration_cast<nanoseconds>(entry.backendEndFrame.time_since_epoch()).count(),
                 duration_cast<nanoseconds>(entry.gpuFrameComplete.time_since_epoch()).count(),
-                duration_cast<nanoseconds>(entry.vsync.time_since_epoch()).count()
+                duration_cast<nanoseconds>(entry.vsync.time_since_epoch()).count(),
+                entry.displayPresent
         });
+    }
+    std::swap(mUserFrameHistory, result);
+}
+
+FixedCapacityVector<Renderer::FrameInfo> FrameInfoManager::getFrameInfoHistory(
+        size_t const historySize) const {
+    auto result = mUserFrameHistory;
+    if (result.capacity() >= historySize) {
+        result.resize(historySize);
     }
     return result;
 }
