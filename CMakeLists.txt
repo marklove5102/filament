@@ -62,6 +62,12 @@ option(FILAMENT_ENABLE_EXPERIMENTAL_GCC_SUPPORT "Enable GCC support (unsupported
 # On the regular filament build (where size is of less concern), we enable GTAO by default.
 option(FILAMENT_DISABLE_GTAO "Disable GTAO" OFF)
 
+# The following allows for paritioning the filament build into 3 parts. This will enable us to
+# build debug filament with release tools.
+option(FILAMENT_BUILD_LIBS "Build the libraries in libs/." ON)
+option(FILAMENT_BUILD_TOOLS "Build the tools in tools/." ON)
+option(FILAMENT_BUILD_FILAMENT "Build the main filament library." ON)
+
 set(FILAMENT_NDK_VERSION "" CACHE STRING
     "Android NDK version or version prefix to be used when building for Android."
 )
@@ -800,78 +806,101 @@ endfunction()
 # ==================================================================================================
 # Sub-projects
 # ==================================================================================================
+if(FILAMENT_BUILD_LIBS)
+    # Common to all platforms
+    add_subdirectory(${EXTERNAL}/libgtest/tnt)
+    add_subdirectory(${LIBRARIES}/camutils)
+    add_subdirectory(${LIBRARIES}/filabridge)
+    add_subdirectory(${LIBRARIES}/filaflat)
+    add_subdirectory(${LIBRARIES}/filagui)
+    add_subdirectory(${LIBRARIES}/filameshio)
+    add_subdirectory(${LIBRARIES}/generatePrefilterMipmap)
+    add_subdirectory(${LIBRARIES}/gltfio)
+    add_subdirectory(${LIBRARIES}/ibl)
+    add_subdirectory(${LIBRARIES}/iblprefilter)
+    add_subdirectory(${LIBRARIES}/image)
+    add_subdirectory(${LIBRARIES}/ktxreader)
+    add_subdirectory(${LIBRARIES}/math)
+    add_subdirectory(${LIBRARIES}/mathio)
+    add_subdirectory(${LIBRARIES}/uberz)
+    add_subdirectory(${LIBRARIES}/utils)
+    add_subdirectory(${LIBRARIES}/viewer)
+    add_subdirectory(${FILAMENT}/shaders)
+    add_subdirectory(${EXTERNAL}/abseil/tnt)
+    add_subdirectory(${EXTERNAL}/basisu/tnt)
+    add_subdirectory(${EXTERNAL}/civetweb/tnt)
+    add_subdirectory(${EXTERNAL}/imgui/tnt)
+    add_subdirectory(${EXTERNAL}/robin-map/tnt)
+    add_subdirectory(${EXTERNAL}/smol-v/tnt)
+    add_subdirectory(${EXTERNAL}/benchmark/tnt)
+    add_subdirectory(${EXTERNAL}/meshoptimizer/tnt)
+    add_subdirectory(${EXTERNAL}/mikktspace)
+    add_subdirectory(${EXTERNAL}/cgltf/tnt)
+    add_subdirectory(${EXTERNAL}/draco/tnt)
+    add_subdirectory(${EXTERNAL}/jsmn/tnt)
+    add_subdirectory(${EXTERNAL}/stb/tnt)
+    add_subdirectory(${EXTERNAL}/getopt)
+    add_subdirectory(${EXTERNAL}/perfetto/tnt)
+    add_subdirectory(${EXTERNAL}/zstd/tnt)
 
-# Common to all platforms
-add_subdirectory(${EXTERNAL}/libgtest/tnt)
-add_subdirectory(${LIBRARIES}/camutils)
-add_subdirectory(${LIBRARIES}/filabridge)
-add_subdirectory(${LIBRARIES}/filaflat)
-add_subdirectory(${LIBRARIES}/filagui)
-add_subdirectory(${LIBRARIES}/filameshio)
-add_subdirectory(${LIBRARIES}/generatePrefilterMipmap)
-add_subdirectory(${LIBRARIES}/gltfio)
-add_subdirectory(${LIBRARIES}/ibl)
-add_subdirectory(${LIBRARIES}/iblprefilter)
-add_subdirectory(${LIBRARIES}/image)
-add_subdirectory(${LIBRARIES}/ktxreader)
-add_subdirectory(${LIBRARIES}/math)
-add_subdirectory(${LIBRARIES}/mathio)
-add_subdirectory(${LIBRARIES}/uberz)
-add_subdirectory(${LIBRARIES}/utils)
-add_subdirectory(${LIBRARIES}/viewer)
-add_subdirectory(${FILAMENT}/shaders)
-add_subdirectory(${EXTERNAL}/abseil/tnt)
-add_subdirectory(${EXTERNAL}/basisu/tnt)
-add_subdirectory(${EXTERNAL}/civetweb/tnt)
-add_subdirectory(${EXTERNAL}/imgui/tnt)
-add_subdirectory(${EXTERNAL}/robin-map/tnt)
-add_subdirectory(${EXTERNAL}/smol-v/tnt)
-add_subdirectory(${EXTERNAL}/benchmark/tnt)
-add_subdirectory(${EXTERNAL}/meshoptimizer/tnt)
-add_subdirectory(${EXTERNAL}/mikktspace)
-add_subdirectory(${EXTERNAL}/cgltf/tnt)
-add_subdirectory(${EXTERNAL}/draco/tnt)
-add_subdirectory(${EXTERNAL}/jsmn/tnt)
-add_subdirectory(${EXTERNAL}/stb/tnt)
-add_subdirectory(${EXTERNAL}/getopt)
-add_subdirectory(${EXTERNAL}/perfetto/tnt)
-add_subdirectory(${EXTERNAL}/zstd/tnt)
+    # Note that this has to be placed after mikktspace in order for combine_static_libs to work.
+    add_subdirectory(${LIBRARIES}/geometry)
 
-# Note that this has to be placed after mikktspace in order for combine_static_libs to work.
-add_subdirectory(${LIBRARIES}/geometry)
+    if (FILAMENT_BUILD_FILAMAT OR IS_HOST_PLATFORM)
+        # spirv-tools must come before filamat, as filamat relies on the presence of the
+        # spirv-tools_SOURCE_DIR variable.
+        set(SPIRV-Headers_SOURCE_DIR ${EXTERNAL}/spirv-headers)
+        add_subdirectory(${EXTERNAL}/spirv-tools)
+        add_subdirectory(${EXTERNAL}/glslang/tnt)
+        add_subdirectory(${EXTERNAL}/spirv-cross/tnt)
+        add_subdirectory(${LIBRARIES}/filamat)
 
-if (FILAMENT_BUILD_FILAMAT OR IS_HOST_PLATFORM)
-    # spirv-tools must come before filamat, as filamat relies on the presence of the
-    # spirv-tools_SOURCE_DIR variable.
-    set(SPIRV-Headers_SOURCE_DIR ${EXTERNAL}/spirv-headers)
-    add_subdirectory(${EXTERNAL}/spirv-tools)
-    add_subdirectory(${EXTERNAL}/glslang/tnt)
-    add_subdirectory(${EXTERNAL}/spirv-cross/tnt)
-    add_subdirectory(${LIBRARIES}/filamat)
+        # the material debugger requires filamat
+        if (FILAMENT_ENABLE_MATDBG OR IS_HOST_PLATFORM)
+            add_subdirectory(${LIBRARIES}/matdbg)
+        endif()
+    endif()
 
-    # the material debugger requires filamat
-    if (FILAMENT_ENABLE_MATDBG OR IS_HOST_PLATFORM)
-        add_subdirectory(${LIBRARIES}/matdbg)
+    if (FILAMENT_ENABLE_FGVIEWER)
+        add_subdirectory(${LIBRARIES}/fgviewer)
+    endif()
+
+    if (FILAMENT_SUPPORTS_VULKAN)
+        add_subdirectory(${LIBRARIES}/bluevk)
+        add_subdirectory(${EXTERNAL}/vkmemalloc/tnt)
+        set(SPIRV_HEADERS_SKIP_EXAMPLES ON)
+        add_subdirectory(${EXTERNAL}/spirv-headers)
+    endif()
+
+    if (FILAMENT_SUPPORTS_WEBGPU)
+        add_subdirectory(${EXTERNAL}/dawn/tnt/)
+    endif()
+
+    if (IS_HOST_PLATFORM)
+        if (FILAMENT_SUPPORTS_OPENGL)
+            add_subdirectory(${LIBRARIES}/bluegl)
+        endif()
+        if (NOT FILAMENT_SKIP_SDL2)
+          add_subdirectory(${LIBRARIES}/filamentapp)
+        endif()
+        add_subdirectory(${LIBRARIES}/imageio)
+        add_subdirectory(${LIBRARIES}/filament-matp)
+
+        add_subdirectory(${EXTERNAL}/libassimp/tnt)
+        add_subdirectory(${EXTERNAL}/libpng/tnt)
+        add_subdirectory(${EXTERNAL}/libsdl2/tnt)
+        add_subdirectory(${EXTERNAL}/libz/tnt)
+        add_subdirectory(${EXTERNAL}/tinyexr/tnt)
     endif()
 endif()
 
-if (FILAMENT_ENABLE_FGVIEWER)
-    add_subdirectory(${LIBRARIES}/fgviewer)
+if(FILAMENT_BUILD_FILAMENT)
+    # Add filament after dawn, since filament/backend depends on dawn targets.
+    add_subdirectory(${FILAMENT}/filament)
+    if (IS_HOST_PLATFORM)
+        add_subdirectory(${FILAMENT}/samples)
+    endif()
 endif()
-
-if (FILAMENT_SUPPORTS_VULKAN)
-    add_subdirectory(${LIBRARIES}/bluevk)
-    add_subdirectory(${EXTERNAL}/vkmemalloc/tnt)
-    set(SPIRV_HEADERS_SKIP_EXAMPLES ON)
-    add_subdirectory(${EXTERNAL}/spirv-headers)
-endif()
-
-if (FILAMENT_SUPPORTS_WEBGPU)
-    add_subdirectory(${EXTERNAL}/dawn/tnt/)
-endif()
-
-# Add filament after dawn, since filament/backend depends on dawn targets.
-add_subdirectory(${FILAMENT}/filament)
 
 set(FILAMENT_SAMPLES_BINARY_DIR ${PROJECT_BINARY_DIR}/samples)
 
@@ -880,24 +909,7 @@ if (WEBGL)
     add_subdirectory(web/samples)
 endif()
 
-if (IS_HOST_PLATFORM)
-    if (FILAMENT_SUPPORTS_OPENGL)
-        add_subdirectory(${LIBRARIES}/bluegl)
-    endif()
-    if (NOT FILAMENT_SKIP_SDL2)
-      add_subdirectory(${LIBRARIES}/filamentapp)
-    endif()
-    add_subdirectory(${LIBRARIES}/imageio)
-    add_subdirectory(${LIBRARIES}/filament-matp)
-
-    add_subdirectory(${FILAMENT}/samples)
-
-    add_subdirectory(${EXTERNAL}/libassimp/tnt)
-    add_subdirectory(${EXTERNAL}/libpng/tnt)
-    add_subdirectory(${EXTERNAL}/libsdl2/tnt)
-    add_subdirectory(${EXTERNAL}/libz/tnt)
-    add_subdirectory(${EXTERNAL}/tinyexr/tnt)
-
+if (IS_HOST_PLATFORM AND FILAMENT_BUILD_TOOLS)
     add_subdirectory(${TOOLS}/cmgen)
     add_subdirectory(${TOOLS}/cso-lut)
     add_subdirectory(${TOOLS}/filamesh)
@@ -914,9 +926,11 @@ if (IS_HOST_PLATFORM)
     add_subdirectory(${TOOLS}/roughness-prefilter)
     add_subdirectory(${TOOLS}/specular-color)
     add_subdirectory(${TOOLS}/uberz)
+
+    # Generate exported executables for cross-compiled builds (Android, WebGL, and iOS)
+    if (NOT CMAKE_CROSSCOMPILING)
+       export(TARGETS matc cmgen filamesh mipgen resgen uberz glslminifier FILE ${IMPORT_EXECUTABLES})
+    endif()
 endif()
 
-# Generate exported executables for cross-compiled builds (Android, WebGL, and iOS)
-if (NOT CMAKE_CROSSCOMPILING)
-    export(TARGETS matc cmgen filamesh mipgen resgen uberz glslminifier FILE ${IMPORT_EXECUTABLES})
-endif()
+
